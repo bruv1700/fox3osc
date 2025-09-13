@@ -1,0 +1,33 @@
+[package]
+name = "fox3osc"
+authors = ["bruvy"]
+description = "Lightweight CLAP subtractive synthesizer with 3 oscillators and phase modulation"
+version = "0.1.0"
+edition = "2024"
+homepage = "https://github.com/bruv1700/fox3osc"
+
+[lib]
+crate-type = ["cdylib"]
+
+[profile.release]
+opt-level = 3
+strip = true
+overflow-checks = false
+lto = true
+panic = "abort"
+codegen-units = 1
+
+[dependencies]
+arrayvec = "0.7.6"
+rand = { version = "0.9.2", default-features = false, features = ["small_rng"] }
+clack-plugin = { git = "https://github.com/prokopyl/clack.git", version = "0.1.0" }
+clack-extensions = { git = "https://github.com/prokopyl/clack.git", version = "0.1.0", features = [
+    "audio-ports",
+    "clack-plugin",
+    "note-ports",
+    "params",
+    "state",
+] }
+
+[build-dependencies]
+static_vcruntime = "2.0"
