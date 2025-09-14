@@ -16,6 +16,10 @@ Lightweight CLAP subtractive synthesizer with 3 oscillators and phase modulation
 
 # Installation
 
+I publish binaries for **windows** and **linux** on the releases section on github. Download and place fox3osc in your clap plugin folder. If your CPU isn't **x86_64**, or you're on neither OS download the source code and build it from source.
+
+## Installation from source
+
 To build fox3osc, you will need **[cargo]**.
 
 Build the plugin with cargo (`cargo build --release`) and copy the built binary from `./target/release/` to your clap plugin folder. Make sure to rename the extension to `.clap`. On MacOS, you'll need to make an app bundle from scratch instead.
