@@ -30,8 +30,6 @@ clean: fetch-debug
 
 clap_path := if os() == "windows" {
     `[System.Environment]::ExpandEnvironmentVariables("%LOCALAPPDATA%") + "\Programs\Common\CLAP"`
-} else if os() == "macos" {
-    "$HOME/Library/Audio/Plug-ins/CLAP"
 } else {
     "$HOME/.clap"
 }
@@ -58,13 +56,13 @@ _uninstall extension:
 clap_folder:
     New-Item -Path {{clap_path}} -Type Directory -Force > $null
 
-[linux, macos]
+[linux]
 install: clap_folder (_install "release")
 
-[linux, macos]
+[linux]
 install-debug: clap_folder (_install "debug")
 
-[linux, macos]
+[linux]
 uninstall:
     rm -rf {{clap_path}}/fox3osc.clap
 
@@ -75,27 +73,3 @@ clap_folder:
 [linux]
 _install profile:
     cp -f target/{{profile}}/libfox3osc.so {{clap_path}}/fox3osc.clap
-
-[private, macos]
-clap_folder:
-    mkdir -p {{clap_path}}/fox3osc.clap/Contents/MacOS
-
-[macos]
-_install profile: contents_plist
-    cp -f target/{{profile}}/libfox3osc.dylib {{clap_path}}/fox3osc.clap/Contents/MacOS
-
-[private, macos]
-contents_plist:
-    echo -e \
-    "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n" \
-    "<"'!'"DOCTYPE plist PUBLIC \"-//Apple//DTD PLIST 1.0//EN\" \"http://www.apple.com/DTDs/PropertyList-1.0.dtd\">\n" \
-    "<plist version=\"1.0\">\n" \
-    "<dict>\n" \
-    "    <key>CFBundleName</key>\n" \
-    "    <string>fox3osc</string>\n" \
-    "    <key>CFBundleExecutable</key>\n" \
-    "    <string>libfox3osc.dylib</string>\n" \
-    "    <key>CFBundleIdentifier</key>\n" \
-    "    <string>com.bruvy.fox3osc</string>\n" \
-    "</dict>\n" \
-    "</plist>" > {{clap_path}}/fox3osc.clap/Contents/contents.plist

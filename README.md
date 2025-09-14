@@ -20,7 +20,7 @@ To build fox3osc, you will need **[cargo]**.
 
 Build the plugin with cargo (`cargo build --release`) and copy the built binary from `./target/release/` to your clap plugin folder. Make sure to rename the extension to `.clap`. On MacOS, you'll need to make an app bundle from scratch instead.
 
-Alternatively, a **[justfile]** is provided to make installation super convenient. Just can be installed with cargo very easily with `cargo install just`. `just install` will then install the plugin to your user clap plugin folder (eg: `~/.clap` on linux). It will create the app bundle for you on MacOS.
+Alternatively, a **[justfile]** is provided to make installation super convenient. Just can be installed with cargo very easily with `cargo install just`. `just install` will then install the plugin to your user clap plugin folder (eg: `~/.clap` on linux).
 
 Building the plugin with the justfile (Running `just`) uses the nightly version of rustc and cargo in order to agressively optimize the size of the final binary. It will download and install the latest version of the nightly compiler and the `rust-src` rustup component for nightly, if not present. The latter is needed for the `-Z build-std` feature on cargo to work.
 
