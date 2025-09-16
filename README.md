@@ -26,7 +26,7 @@ Build the plugin with cargo (`cargo build --release`) and copy the built binary 
 
 Alternatively, a **[justfile]** is provided to make installation super convenient. Just can be installed with cargo very easily with `cargo install just`. `just install` will then install the plugin to your user clap plugin folder (eg: `~/.clap` on linux).
 
-Building the plugin with the justfile (Running `just`) uses the nightly version of rustc and cargo in order to agressively optimize the size of the final binary. It will download and install the latest version of the nightly compiler and the `rust-src` rustup component for nightly, if not present. The latter is needed for the `-Z build-std` feature on cargo to work.
+Building the plugin with the justfile (Running `just`) uses the nightly version of rustc and cargo in order to agressively optimize the size of the final binary. It will download and install the `rust-src` rustup component for nightly if not present, which is needed for the `-Z build-std` feature on cargo to work. You can install the latest version of nightly rust with `rustup toolchain install nightly`.
 
 Of course the nightly compiler isn't needed to build fox3osc, this is just so the final binary can be as small as possible.
 

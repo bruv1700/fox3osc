@@ -12,7 +12,6 @@ build-debug: fetch-debug clippy-debug
     cargo build --frozen
 
 fetch:
-    rustup toolchain install nightly
     rustup component add rust-src --toolchain nightly
     cargo +nightly fetch
 
