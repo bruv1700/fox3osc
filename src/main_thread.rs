@@ -20,8 +20,9 @@ use crate::{
     consts::{
         CLAP_PARAM_IS_ENUM, PARAMETER_ATTACK, PARAMETER_DECAY, PARAMETER_HQ_1, PARAMETER_HQ_2,
         PARAMETER_HQ_3, PARAMETER_LEVEL_1, PARAMETER_LEVEL_2, PARAMETER_LEVEL_3,
-        PARAMETER_MODULATION, PARAMETER_NR, PARAMETER_RELEASE, PARAMETER_SUSTAIN,
-        PARAMETER_WAVEFORM_1, PARAMETER_WAVEFORM_2, PARAMETER_WAVEFORM_3,
+        PARAMETER_MODULATION, PARAMETER_NR, PARAMETER_PITCH_1, PARAMETER_PITCH_2,
+        PARAMETER_PITCH_3, PARAMETER_RELEASE, PARAMETER_SUSTAIN, PARAMETER_WAVEFORM_1,
+        PARAMETER_WAVEFORM_2, PARAMETER_WAVEFORM_3,
     },
     shared::{Envelope, Fox3oscShared, Modulation, Waveform},
 };
@@ -183,6 +184,26 @@ fn get_info_modulation(param_index: u32, info: &mut ParamInfoWriter) {
     }
 }
 
+fn get_info_pitch(param_index: u32, info: &mut ParamInfoWriter) {
+    if let Some((name, default)) = match param_index {
+        PARAMETER_PITCH_1 => Some(("Osc 1 Pitch", 24usize)),
+        PARAMETER_PITCH_2 => Some(("Osc 2 Pitch", 24usize)),
+        PARAMETER_PITCH_3 => Some(("Osc 3 Pitch", 24usize)),
+        _ => None,
+    } {
+        info.set(&ParamInfo {
+            id: param_index.into(),
+            flags: ParamInfoFlags::IS_AUTOMATABLE,
+            cookie: Default::default(),
+            name: name.as_bytes(),
+            module: b"",
+            min_value: 0.0,
+            max_value: 48.0,
+            default_value: default as f64,
+        });
+    }
+}
+
 impl PluginMainThreadParams for Fox3oscMainThread<'_> {
     /// Number of plugin parameters.
     fn count(&mut self) -> u32 {
@@ -195,6 +216,7 @@ impl PluginMainThreadParams for Fox3oscMainThread<'_> {
         self::get_info_levels(param_index, info);
         self::get_info_hq(param_index, info);
         self::get_info_modulation(param_index, info);
+        self::get_info_pitch(param_index, info);
     }
 
     fn get_value(&mut self, param_id: ClapId) -> Option<f64> {
@@ -203,6 +225,7 @@ impl PluginMainThreadParams for Fox3oscMainThread<'_> {
         let levels = self.shared.get_levels().ok()?;
         let hq = self.shared.get_hq().ok()?;
         let modulation = self.shared.get_modulation().ok()?;
+        let pitch = self.shared.get_pitch().ok()?;
 
         match param_id.into() {
             PARAMETER_ATTACK => Some(envelope.attack as f64),
@@ -219,6 +242,9 @@ impl PluginMainThreadParams for Fox3oscMainThread<'_> {
             PARAMETER_HQ_2 => Some(hq[1] as u8 as f64),
             PARAMETER_HQ_3 => Some(hq[2] as u8 as f64),
             PARAMETER_MODULATION => Some((*modulation).into()),
+            PARAMETER_PITCH_1 => Some(pitch[0]),
+            PARAMETER_PITCH_2 => Some(pitch[1]),
+            PARAMETER_PITCH_3 => Some(pitch[2]),
             _ => None,
         }
     }
@@ -246,6 +272,14 @@ impl PluginMainThreadParams for Fox3oscMainThread<'_> {
             PARAMETER_MODULATION => {
                 write!(writer, "{}", Modulation::from(value).as_str())
             }
+            PARAMETER_PITCH_1..=PARAMETER_PITCH_3 => {
+                write!(
+                    writer,
+                    "{}{} semitones",
+                    if value >= 24.0 { "+" } else { "" },
+                    (value.floor() - 24.0) as isize,
+                )
+            }
             _ => Err(std::fmt::Error),
         }
     }
@@ -272,6 +306,7 @@ impl PluginMainThreadParams for Fox3oscMainThread<'_> {
                 input[..suffix_idx].parse().map(|v: f64| v * scale).ok()
             }
             PARAMETER_HQ_1..=PARAMETER_HQ_3 => Some(input.parse::<bool>().ok()? as u8 as f64),
+            PARAMETER_PITCH_1..=PARAMETER_PITCH_3 => Some(input.parse::<f64>().ok()? + 24.0),
             _ if input == Waveform::Sine.as_str() => Some(Waveform::Sine.into()),
             _ if input == Waveform::Triangle.as_str() => Some(Waveform::Triangle.into()),
             _ if input == Waveform::Square.as_str() => Some(Waveform::Square.into()),
@@ -306,6 +341,7 @@ impl PluginStateImpl for Fox3oscMainThread<'_> {
         let levels = self.shared.get_levels()?;
         let hq = self.shared.get_hq()?;
         let modulation = self.shared.get_modulation()?;
+        let pitch = self.shared.get_pitch()?;
 
         output.write_all(&envelope.attack.to_le_bytes())?;
         output.write_all(&envelope.decay.to_le_bytes())?;
@@ -324,6 +360,10 @@ impl PluginStateImpl for Fox3oscMainThread<'_> {
         }
 
         output.write_all(&f64::from(*modulation).to_le_bytes())?;
+        for &pitch in pitch.iter() {
+            output.write_all(&pitch.to_le_bytes())?;
+        }
+
         Ok(())
     }
 
@@ -334,6 +374,7 @@ impl PluginStateImpl for Fox3oscMainThread<'_> {
         let mut levels = self.shared.get_levels_mut()?;
         let mut hq = self.shared.get_hq_mut()?;
         let mut modulation = self.shared.get_modulation_mut()?;
+        let mut pitch = self.shared.get_pitch_mut()?;
 
         let mut buf = [0; 4];
         input.read_exact(&mut buf)?;
@@ -365,6 +406,11 @@ impl PluginStateImpl for Fox3oscMainThread<'_> {
         let mut buf = [0; 8];
         input.read_exact(&mut buf)?;
         *modulation = f64::from_le_bytes(buf).into();
+
+        for pitch in pitch.iter_mut() {
+            input.read_exact(&mut buf)?;
+            *pitch = f64::from_le_bytes(buf);
+        }
 
         Ok(())
     }

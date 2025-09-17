@@ -5,7 +5,8 @@ use clack_plugin::plugin::PluginError;
 use rand::{Rng, rngs::SmallRng};
 
 use crate::{
-    consts::{KEYS_NR, OSC_NR},
+    consts::{KEYS_NR, NOTES_NR, OSC_MOD, OSC_NR, PHASE_DRY, PHASE_NR},
+    math,
     shared::{Envelope, Fox3oscShared, Modulation, Waveform},
 };
 
@@ -132,41 +133,33 @@ pub struct Key {
     /* --Per oscillator data-- */
     adsr: [ADSR; OSC_NR],
     /// Amplitude of currently proccessed sample
-    phase: [f32; OSC_NR],
+    phase: [f32; PHASE_NR],
     /// Used when processing sploinky and skloinky waveforms, and when doing phase and evil modulation.
     dc_blocker: [DCBlocker; OSC_NR],
 
     /// Function pointers per oscillator corresponding to their wave functions.
-    process_waveform: [fn(&mut Self, rng: &mut SmallRng, osc: usize) -> f32; OSC_NR],
+    process_waveform:
+        [fn(&mut Self, rng: &mut SmallRng, osc: usize, transition_size: f32) -> f32; OSC_NR],
 
     /* --Per key data-- */
     modulation: Modulation,
     sample_rate: f32,
+    note: usize,
     /// MIDI note velocity in amplitude (0.0..=1.0)
     velocity: f32,
-    /// Sample increment (frequency / sample rate)
-    increment: f32,
-    transition_size: f32,
 }
 
 impl Key {
-    const MOD_OSC: usize = 2;
-
     /// Creates a key in an uninitialized state. The frequency is calculated from `note`, which corresponds
     /// to a MIDI note. The sample increment and wave transition size is pre-calculated here. The ADSR
     /// is also set to an uninitialized state.
     fn new(sample_rate: f32, note: usize) -> Self {
-        let frequency = 2.0f32.powf((note as f32 - 69.0) / 12.0) * 440.0;
-        let increment = frequency / sample_rate;
-        let transition_size = 2.0 / (sample_rate / frequency);
-
         Self {
             sample_rate,
-            increment,
-            transition_size,
+            note,
             adsr: std::array::from_fn(|_| ADSR::reset()),
             dc_blocker: std::array::from_fn(|_| DCBlocker::reset()),
-            phase: [0.0; OSC_NR],
+            phase: [0.0; PHASE_NR],
             process_waveform: [Self::process_sine; OSC_NR],
             modulation: Modulation::None,
             velocity: 0.0,
@@ -191,10 +184,6 @@ impl Key {
 
         self.modulation = *shared.get_modulation()?;
         self.velocity = velocity as f32 / 127.0;
-
-        if self.modulation == Modulation::Evil {
-            self.phase[Self::MOD_OSC] = self.increment;
-        }
 
         for osc in 0..OSC_NR {
             self.adsr[osc].on(envelope, self.sample_rate);
@@ -225,7 +214,7 @@ impl Key {
     }
 
     pub fn end(&mut self) {
-        self.phase = [0.0; OSC_NR];
+        self.phase = [0.0; PHASE_NR];
         for adsr in &mut self.adsr {
             *adsr = ADSR::reset();
         }
@@ -244,17 +233,21 @@ impl Key {
     pub fn process(
         &mut self,
         output: &mut [f32],
+        pitch: [usize; OSC_NR],
         levels: [f32; OSC_NR],
         rng: &mut SmallRng,
         oscs: &[usize],
+        note_data: &[NoteData],
     ) {
         // We should never call this function on a key that isn't on
         debug_assert!(self.is_on());
 
         match self.modulation {
-            Modulation::None => self.process_3sub(output, levels, rng, oscs),
-            Modulation::Phase => self.process_1pm_1sub(output, levels, rng, oscs),
-            Modulation::Evil => self.process_1evil_1sub(output, levels, rng, oscs),
+            Modulation::None => self.process_3sub(output, pitch, levels, rng, oscs, note_data),
+            Modulation::Phase => self.process_1pm_1sub(output, pitch, levels, rng, oscs, note_data),
+            Modulation::Evil => {
+                self.process_1evil_1sub(output, pitch, levels, rng, oscs, note_data)
+            }
         }
     }
 
@@ -262,18 +255,22 @@ impl Key {
     fn process_3sub(
         &mut self,
         output: &mut [f32],
+        pitch: [usize; OSC_NR],
         levels: [f32; OSC_NR],
         rng: &mut SmallRng,
         oscs: &[usize],
+        note_data: &[NoteData],
     ) {
         for &osc in oscs {
+            let note_data = note_data[self.note + pitch[osc]];
+
             for sample in output.iter_mut() {
-                *sample += (self.process_waveform[osc])(self, rng, osc)
+                *sample += (self.process_waveform[osc])(self, rng, osc, note_data.transition_size)
                     * self.velocity
                     * levels[osc]
                     * self.adsr[osc].process();
 
-                self.phase[osc] = (self.phase[osc] + self.increment) % 1.0;
+                self.phase[osc] = (self.phase[osc] + note_data.increment) % 1.0;
             }
         }
     }
@@ -283,57 +280,74 @@ impl Key {
     fn process_1pm_1sub(
         &mut self,
         output: &mut [f32],
+        pitch: [usize; OSC_NR],
         levels: [f32; OSC_NR],
         rng: &mut SmallRng,
         oscs: &[usize],
+        note_data: &[NoteData],
     ) {
         for &osc in oscs {
             if osc == 0 {
+                let osc1_note_data = note_data[self.note + pitch[osc]];
+                let mod_osc_note_data = note_data[self.note + pitch[OSC_MOD]];
+
                 for sample in output.iter_mut() {
                     /// Amount by which to scale down the PM signal's amplitude.
                     ///
                     /// I want the PM signal to be scaled down to 48% of the maximum amplitude because
                     /// modulating the Osc 1 signal with a higher amplitude than that creates very
                     /// nasty aliasing.
-                    const MOD_OSC_LEVEL_MODIFIER: f32 = 25.0 / 12.0;
+                    const OSC_MOD_LEVEL_MODIFIER: f32 = 100.0 / 48.0;
 
                     // We are using the ADSR signal in multiple points here so we're processing it
                     // only once here and reusing it where needed.
                     let osc1_adsr = self.adsr[osc].process();
-                    let sample_dc = (self.process_waveform[osc])(self, rng, osc)
-                        * self.velocity
+                    let sample_dc = (self.process_waveform[osc])(
+                        self,
+                        rng,
+                        osc,
+                        osc1_note_data.transition_size,
+                    ) * self.velocity
                         * levels[osc]
                         * osc1_adsr;
 
                     *sample += self.dc_blocker[osc].process(sample_dc);
                     self.phase[osc] = ((self.phase[osc]
-                        + (self.process_waveform[Self::MOD_OSC])(self, rng, Self::MOD_OSC))
-                        * (levels[Self::MOD_OSC] / MOD_OSC_LEVEL_MODIFIER))
+                        + (self.process_waveform[OSC_MOD])(
+                            self,
+                            rng,
+                            OSC_MOD,
+                            mod_osc_note_data.transition_size,
+                        ))
+                        * (levels[OSC_MOD] / OSC_MOD_LEVEL_MODIFIER))
                         % 1.0;
 
-                    self.phase[Self::MOD_OSC] = (self.phase[Self::MOD_OSC] + self.increment) % 1.0;
+                    self.phase[OSC_MOD] = (self.phase[OSC_MOD] + mod_osc_note_data.increment) % 1.0;
+                    self.phase[PHASE_DRY] =
+                        (self.phase[PHASE_DRY] + osc1_note_data.increment) % 1.0;
 
-                    // We temporarily set the phase of oscillator 1 with that of oscillator 3 in order
-                    // to mix dry un-modulated signal.
-                    let pm_osc1_phase = self.phase[osc];
-                    self.phase[osc] = self.phase[Self::MOD_OSC];
-                    *sample += (self.process_waveform[osc])(self, rng, osc)
-                        * self.velocity
-                        * (levels[osc] - (levels[osc] * levels[Self::MOD_OSC]))
+                    self.phase.swap(0, PHASE_DRY);
+                    *sample += (self.process_waveform[osc])(
+                        self,
+                        rng,
+                        osc,
+                        osc1_note_data.transition_size,
+                    ) * self.velocity
+                        * (levels[osc] - (levels[osc] * levels[OSC_MOD]) / OSC_MOD_LEVEL_MODIFIER)
                         * osc1_adsr;
 
-                    // Now we set the phase of oscillator 1 back to its modulated phase so that in
-                    // the next loop iteration we increase the phase appropriately when modulating
-                    // it with oscillator 3's signal.
-                    self.phase[osc] = pm_osc1_phase;
+                    self.phase.swap(0, PHASE_DRY);
                 }
             } else if osc == 1 {
+                let note_data = note_data[self.note + pitch[osc]];
+
                 for sample in output.iter_mut() {
-                    *sample += (self.process_waveform[osc])(self, rng, osc)
-                        * self.velocity
-                        * levels[osc]
-                        * self.adsr[osc].process();
-                    self.phase[osc] = (self.phase[osc] + self.increment) % 1.0;
+                    *sample +=
+                        (self.process_waveform[osc])(self, rng, osc, note_data.transition_size)
+                            * self.velocity
+                            * levels[osc]
+                            * self.adsr[osc].process();
+                    self.phase[osc] = (self.phase[osc] + note_data.increment) % 1.0;
                 }
             }
         }
@@ -352,84 +366,78 @@ impl Key {
     fn process_1evil_1sub(
         &mut self,
         output: &mut [f32],
+        pitch: [usize; OSC_NR],
         levels: [f32; OSC_NR],
         rng: &mut SmallRng,
         oscs: &[usize],
+        note_data: &[NoteData],
     ) {
         for &osc in oscs {
             if osc == 0 {
+                let osc1_note_data = note_data[self.note + pitch[osc]];
+                let mod_note_data = note_data[self.note + pitch[OSC_MOD]];
+
                 for sample in output.iter_mut() {
-                    let sample_dc = (self.process_waveform[osc])(self, rng, osc)
-                        * self.velocity
+                    let sample_dc = (self.process_waveform[osc])(
+                        self,
+                        rng,
+                        osc,
+                        osc1_note_data.transition_size,
+                    ) * self.velocity
                         * levels[osc]
                         * self.adsr[osc].process();
 
                     *sample += self.dc_blocker[osc].process(sample_dc);
+
+                    self.phase[OSC_MOD] = osc1_note_data.increment;
                     self.phase[osc] = (self.phase[osc]
-                        + ((self.process_waveform[Self::MOD_OSC])(self, rng, Self::MOD_OSC))
-                            * self.velocity
-                            * levels[Self::MOD_OSC]
-                            * self.adsr[Self::MOD_OSC].process())
+                        + ((self.process_waveform[OSC_MOD])(
+                            self,
+                            rng,
+                            OSC_MOD,
+                            mod_note_data.transition_size,
+                        )) * self.velocity
+                            * levels[OSC_MOD]
+                            * self.adsr[OSC_MOD].process())
                         % 1.0;
                 }
             } else if osc == 1 {
+                let note_data = note_data[self.note + pitch[osc]];
+
                 for sample in output.iter_mut() {
-                    *sample += (self.process_waveform[osc])(self, rng, osc)
-                        * self.velocity
-                        * levels[osc]
-                        * self.adsr[osc].process();
-                    self.phase[osc] = (self.phase[osc] + self.increment) % 1.0;
+                    *sample +=
+                        (self.process_waveform[osc])(self, rng, osc, note_data.transition_size)
+                            * self.velocity
+                            * levels[osc]
+                            * self.adsr[osc].process();
+                    self.phase[osc] = (self.phase[osc] + note_data.increment) % 1.0;
                 }
             }
         }
     }
 
     /// A sine waveform.
-    fn process_sine(&mut self, _rng: &mut SmallRng, osc: usize) -> f32 {
+    fn process_sine(&mut self, _rng: &mut SmallRng, osc: usize, _transition_size: f32) -> f32 {
         (self.phase[osc] * TAU).sin()
     }
 
     /// A noise waveform tsssssssssssshh.
-    fn process_noise(&mut self, rng: &mut SmallRng, _osc: usize) -> f32 {
+    fn process_noise(&mut self, rng: &mut SmallRng, _osc: usize, _transition_size: f32) -> f32 {
         rng.random_range(-1.0..1.0)
     }
 
-    fn integrate_square_wave(&self, p: f32) -> f32 {
-        let mut value = 0.0;
-        let mut prest = p;
-
-        if p <= self.transition_size {
-            value += self::integrate_f1(p / self.transition_size) * self.transition_size;
-        } else {
-            value += (2.0 / 3.0) * self.transition_size;
-            prest -= self.transition_size;
-
-            if p <= 0.5 - self.transition_size {
-                value += prest;
-            } else {
-                value += 0.5 - 2.0 * self.transition_size;
-                prest -= 0.5 - 2.0 * self.transition_size;
-
-                if p <= 0.5 {
-                    value += ((2.0 / 3.0) - self::integrate_f1(1.0 - prest / self.transition_size))
-                        * self.transition_size;
-                } else {
-                    value += (2.0 / 3.0) * self.transition_size;
-                    prest -= self.transition_size;
-                    value -= self.integrate_square_wave(prest);
-                }
-            }
-        }
-
-        value
-    }
-
-    fn process_triangle_hq(&mut self, _rng: &mut SmallRng, osc: usize) -> f32 {
-        4.0 * self.integrate_square_wave((self.phase[osc] + 0.25).rem_euclid(1.0)) - 1.0
+    fn process_triangle_hq(
+        &mut self,
+        _rng: &mut SmallRng,
+        osc: usize,
+        transition_size: f32,
+    ) -> f32 {
+        4.0 * math::integrate_square_wave((self.phase[osc] + 0.25).rem_euclid(1.0), transition_size)
+            - 1.0
     }
 
     /// An naive aliasing triangle waveform.
-    fn process_triangle(&mut self, _rng: &mut SmallRng, osc: usize) -> f32 {
+    fn process_triangle(&mut self, _rng: &mut SmallRng, osc: usize, _transition_size: f32) -> f32 {
         let p = self.phase[osc] % 1.0;
 
         if p < 0.25 {
@@ -442,31 +450,29 @@ impl Key {
     }
 
     /// A polyblep square waveform.
-    fn process_square_hq(&mut self, _rng: &mut SmallRng, osc: usize) -> f32 {
+    fn process_square_hq(&mut self, _rng: &mut SmallRng, osc: usize, transition_size: f32) -> f32 {
         let p = self.phase[osc] % 1.0;
 
         (if p < 0.5 { 1.0 } else { -1.0 })
-            + self::polyblep((((self.phase[osc] + 0.5) % 1.0) - 0.5) / self.transition_size)
-            - self::polyblep((p - 0.5) / self.transition_size)
+            + math::polyblep((((self.phase[osc] + 0.5) % 1.0) - 0.5) / transition_size)
+            - math::polyblep((p - 0.5) / transition_size)
     }
 
     /// An naive aliasing square waveform.
-    fn process_square(&mut self, _rng: &mut SmallRng, osc: usize) -> f32 {
+    fn process_square(&mut self, _rng: &mut SmallRng, osc: usize, _transition_size: f32) -> f32 {
         let p = self.phase[osc] % 1.0;
         if p < 0.5 { 1.0 } else { -1.0 }
     }
 
     /// A polyblep saw waveform.
-    fn process_saw_hq(&mut self, _rng: &mut SmallRng, osc: usize) -> f32 {
+    fn process_saw_hq(&mut self, _rng: &mut SmallRng, osc: usize, transition_size: f32) -> f32 {
         let p = self.phase[osc] % 1.0;
 
-        2.0 * p
-            - 1.0
-            - self::polyblep((((self.phase[osc] + 0.5) % 1.0) - 0.5) / self.transition_size)
+        2.0 * p - 1.0 - math::polyblep((((self.phase[osc] + 0.5) % 1.0) - 0.5) / transition_size)
     }
 
     /// An naive aliasing saw waveform.
-    fn process_saw(&mut self, _rng: &mut SmallRng, osc: usize) -> f32 {
+    fn process_saw(&mut self, _rng: &mut SmallRng, osc: usize, _transition_size: f32) -> f32 {
         let p = self.phase[osc] % 1.0;
 
         2.0 * p - 1.0
@@ -477,13 +483,13 @@ impl Key {
     /// at the wrong point in the wave. Name was chosen arbitrarilly because it sounds cute.
     ///
     /// Since the waveform generated by this is so incorrect, we apply a DC blocking filter.
-    fn process_sploinky(&mut self, _rng: &mut SmallRng, osc: usize) -> f32 {
+    fn process_sploinky(&mut self, _rng: &mut SmallRng, osc: usize, transition_size: f32) -> f32 {
         let p = self.phase[osc] % 1.0;
 
         self.dc_blocker[osc].process(
             (if p < 0.5 { 1.0 } else { -1.0 }
-                + self::polyblep(((self.phase[osc] + 0.5) % 0.5) - self.transition_size)
-                - self::polyblep((p - 0.5) / self.transition_size))
+                + math::polyblep(((self.phase[osc] + 0.5) % 0.5) - transition_size)
+                - math::polyblep((p - 0.5) / transition_size))
                 / 2.0,
         )
     }
@@ -493,37 +499,38 @@ impl Key {
     /// at the wrong point in the wave. Name was chosen arbitrarilly because it sounds cute.
     ///
     /// Since the waveform generated by this is so incorrect, we apply a DC blocking filter.
-    fn process_skloinky(&mut self, _rng: &mut SmallRng, osc: usize) -> f32 {
+    fn process_skloinky(&mut self, _rng: &mut SmallRng, osc: usize, transition_size: f32) -> f32 {
         let p = self.phase[osc] % 1.0;
-
         self.dc_blocker[osc].process(
-            (2.0 * p
-                - 1.0
-                - self::polyblep(((self.phase[osc] + 0.5) % 0.5) - self.transition_size))
+            (2.0 * p - 1.0 - math::polyblep(((self.phase[osc] + 0.5) % 0.5) - transition_size))
                 / 2.0,
         )
     }
 }
 
-fn integrate_f1(p: f32) -> f32 {
-    -p.powf(3.0) / 3.0 + p.powf(2.0)
+#[derive(Clone, Copy)]
+pub struct NoteData {
+    pub increment: f32,
+    pub transition_size: f32,
 }
 
-/// "Polynomial bandlimited step" algorithm. Smooths an aliased waveform at the transition points
-/// using bandlimited polynomials.
-fn polyblep(ptrans: f32) -> f32 {
-    if ptrans <= -1.0 || ptrans >= 1.0 {
-        0.0
-    } else if ptrans <= 0.0 {
-        (ptrans + 1.0).powf(2.0)
-    } else {
-        -(ptrans - 1.0).powf(2.0)
+impl NoteData {
+    pub fn new(sample_rate: f32, note: f32) -> Self {
+        let frequency = 2.0f32.powf((note - 69.0) / 12.0) * 440.0;
+        let increment = frequency / sample_rate;
+        let transition_size = 2.0 / (sample_rate / frequency);
+
+        Self {
+            increment,
+            transition_size,
+        }
     }
 }
 
 pub struct Keys {
     alive_keys: ArrayVec<usize, KEYS_NR>,
     keys: [Key; KEYS_NR],
+    note_data: [NoteData; NOTES_NR],
 }
 
 impl Keys {
@@ -531,6 +538,9 @@ impl Keys {
         Self {
             alive_keys: ArrayVec::new(),
             keys: std::array::from_fn(move |note| Key::new(sample_rate, note)),
+            note_data: std::array::from_fn(move |note| {
+                NoteData::new(sample_rate, (note as f32) - 24.0)
+            }),
         }
     }
 
@@ -560,14 +570,14 @@ impl Keys {
 
     pub fn for_each<F>(&mut self, mut f: F)
     where
-        F: FnMut(&mut Key),
+        F: FnMut(&mut Key, &[NoteData]),
     {
         let mut i = 0;
         while i < self.alive_keys.len() {
             let key = &mut self.keys[self.alive_keys[i]];
 
             if key.is_on() {
-                f(key);
+                f(key, &self.note_data);
                 i += 1;
             } else {
                 key.end();

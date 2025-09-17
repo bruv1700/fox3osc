@@ -11,8 +11,8 @@ use clack_plugin::{
 use crate::consts::{
     OSC_NR, PARAMETER_ATTACK, PARAMETER_DECAY, PARAMETER_HQ_1, PARAMETER_HQ_2, PARAMETER_HQ_3,
     PARAMETER_LEVEL_1, PARAMETER_LEVEL_2, PARAMETER_LEVEL_3, PARAMETER_MODULATION,
-    PARAMETER_RELEASE, PARAMETER_SUSTAIN, PARAMETER_WAVEFORM_1, PARAMETER_WAVEFORM_2,
-    PARAMETER_WAVEFORM_3,
+    PARAMETER_PITCH_1, PARAMETER_PITCH_2, PARAMETER_PITCH_3, PARAMETER_RELEASE, PARAMETER_SUSTAIN,
+    PARAMETER_WAVEFORM_1, PARAMETER_WAVEFORM_2, PARAMETER_WAVEFORM_3,
 };
 
 #[derive(Clone, Copy)]
@@ -83,7 +83,7 @@ impl From<f64> for Waveform {
     }
 }
 
-#[derive(Default, Clone, Copy, PartialEq)]
+#[derive(Default, Clone, Copy)]
 #[repr(C)]
 pub enum Modulation {
     #[default]
@@ -124,6 +124,7 @@ pub struct Fox3oscShared {
     levels: RwLock<[f32; OSC_NR]>,
     hq: RwLock<[bool; OSC_NR]>,
     modulation: RwLock<Modulation>,
+    pitch: RwLock<[f64; OSC_NR]>,
 }
 
 impl Default for Fox3oscShared {
@@ -134,6 +135,7 @@ impl Default for Fox3oscShared {
             modulation: Default::default(),
             levels: RwLock::new([1.0, 0.0, 0.0]),
             hq: RwLock::new([true; OSC_NR]),
+            pitch: RwLock::new([24.0; OSC_NR]),
         }
     }
 }
@@ -156,6 +158,7 @@ impl Fox3oscShared {
             let mut levels = self.get_levels_mut()?;
             let mut hq = self.get_hq_mut()?;
             let mut modulation = self.get_modulation_mut()?;
+            let mut pitch = self.get_pitch_mut()?;
 
             match event.param_id().map(|x| x.into()) {
                 Some(PARAMETER_ATTACK) => envelope.attack = event.value() as f32,
@@ -172,6 +175,9 @@ impl Fox3oscShared {
                 Some(PARAMETER_HQ_2) => hq[1] = event.value() != 0.0,
                 Some(PARAMETER_HQ_3) => hq[2] = event.value() != 0.0,
                 Some(PARAMETER_MODULATION) => *modulation = event.value().into(),
+                Some(PARAMETER_PITCH_1) => pitch[0] = event.value(),
+                Some(PARAMETER_PITCH_2) => pitch[1] = event.value(),
+                Some(PARAMETER_PITCH_3) => pitch[2] = event.value(),
                 _ => {}
             }
 
@@ -221,5 +227,13 @@ impl Fox3oscShared {
 
     pub fn get_modulation_mut(&self) -> Result<RwLockWriteGuard<'_, Modulation>, PluginError> {
         self.modulation.write().or(Err(Self::PARAMETER_WRITE_ERR))
+    }
+
+    pub fn get_pitch(&self) -> Result<RwLockReadGuard<'_, [f64; OSC_NR]>, PluginError> {
+        self.pitch.read().or(Err(Self::PARAMETER_READ_ERR))
+    }
+
+    pub fn get_pitch_mut(&self) -> Result<RwLockWriteGuard<'_, [f64; OSC_NR]>, PluginError> {
+        self.pitch.write().or(Err(Self::PARAMETER_WRITE_ERR))
     }
 }

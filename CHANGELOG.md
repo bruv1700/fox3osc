@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - Changelog file
+- Parameters to change the pitch of each oscillator (-24 to +24 semitones)
 
 ## [0.1.0] 2025-09-14
 

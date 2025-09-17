@@ -12,8 +12,18 @@ pub const CLAP_PARAM_IS_ENUM: ParamInfoFlags = ParamInfoFlags::from_bits_retain(
 
 /// Number of MIDI notes and max polyphony of fox3osc
 pub const KEYS_NR: usize = 128;
+/// Number of notes taking into account a possible pitch parameter.
+pub const NOTES_NR: usize = 24 + KEYS_NR + 24;
+
+/// The oscillator that modulates oscillator 1.
+pub const OSC_MOD: usize = 2;
 /// Number of oscillators *(The 3 in fox3osc)*
 pub const OSC_NR: usize = 3;
+
+/// The phase for the dry signal during PM synthesis.
+pub const PHASE_DRY: usize = PHASE_NR - 1;
+/// Number of phases we keep track of, which is the number of oscillators + 1.
+pub const PHASE_NR: usize = OSC_NR + 1;
 
 pub const MIDI_ON: u8 = 0x90;
 pub const MIDI_OFF: u8 = 0x80;
@@ -36,4 +46,7 @@ pub const PARAMETER_HQ_1: u32 = 10;
 pub const PARAMETER_HQ_2: u32 = 11;
 pub const PARAMETER_HQ_3: u32 = 12;
 pub const PARAMETER_MODULATION: u32 = 13;
-pub const PARAMETER_NR: u32 = 14;
+pub const PARAMETER_PITCH_1: u32 = 14;
+pub const PARAMETER_PITCH_2: u32 = 15;
+pub const PARAMETER_PITCH_3: u32 = 16;
+pub const PARAMETER_NR: u32 = 17;

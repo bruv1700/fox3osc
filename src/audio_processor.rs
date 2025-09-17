@@ -13,7 +13,7 @@ use crate::{
     consts::{
         KEYS_NR, MIDI_CC, MIDI_CC_ALL_NOTES_OFF, MIDI_CC_ALL_SOUNDS_OFF, MIDI_OFF, MIDI_ON, OSC_NR,
     },
-    key::{Key, Keys},
+    key::Keys,
     main_thread::Fox3oscMainThread,
     shared::Fox3oscShared,
 };
@@ -28,8 +28,8 @@ impl Fox3oscAudioProcessor<'_> {
     fn process_cc_event(&mut self, midi_event: [u8; 3]) {
         let cc_nr = midi_event[1];
         match cc_nr {
-            MIDI_CC_ALL_SOUNDS_OFF => self.keys.for_each(Key::end),
-            MIDI_CC_ALL_NOTES_OFF => self.keys.for_each(Key::release),
+            MIDI_CC_ALL_SOUNDS_OFF => self.keys.for_each(|key, _| key.end()),
+            MIDI_CC_ALL_NOTES_OFF => self.keys.for_each(|key, _| key.release()),
             _ => {}
         }
     }
@@ -116,14 +116,18 @@ impl<'a> PluginAudioProcessor<'a, Fox3oscShared, Fox3oscMainThread<'a>>
                 .filter_map(|(osc, level)| if level > 0.0 { Some(osc) } else { None })
                 .collect();
 
+            let pitch = self.shared.get_pitch()?;
+
             output[batch.sample_bounds()].fill(0.0);
-            self.keys.for_each(|key| {
+            self.keys.for_each(|key, note_data| {
                 status = ProcessStatus::Continue;
                 key.process(
                     &mut output[batch.sample_bounds()],
+                    pitch.map(|pitch| pitch as usize),
                     *levels,
                     &mut self.rng,
                     &oscs,
+                    note_data,
                 );
             });
         }
@@ -132,7 +136,7 @@ impl<'a> PluginAudioProcessor<'a, Fox3oscShared, Fox3oscMainThread<'a>>
     }
 
     fn reset(&mut self) {
-        self.keys.for_each(Key::end);
+        self.keys.for_each(|key, _| key.end());
     }
 }
 

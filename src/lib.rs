@@ -15,6 +15,7 @@ mod audio_processor;
 mod consts;
 mod key;
 mod main_thread;
+mod math;
 mod shared;
 
 struct Fox3oscDescriptor {
