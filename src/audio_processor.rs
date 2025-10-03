@@ -11,14 +11,15 @@ use rand::{SeedableRng, rngs::SmallRng};
 
 use crate::{
     consts::{
-        KEYS_NR, MIDI_CC, MIDI_CC_ALL_NOTES_OFF, MIDI_CC_ALL_SOUNDS_OFF, MIDI_OFF, MIDI_ON, OSC_NR,
+        KEYS_NR, MIDI_CC, MIDI_CC_ALL_NOTES_OFF, MIDI_CC_ALL_SOUNDS_OFF, MIDI_OFF, MIDI_ON, NOTES_NR, OSC_NR
     },
-    key::Keys,
+    key::{Key, Keys, NoteData},
     main_thread::Fox3oscMainThread,
     shared::Fox3oscShared,
 };
 
 pub struct Fox3oscAudioProcessor<'a> {
+    note_data: [NoteData; NOTES_NR],
     keys: Keys,
     rng: SmallRng,
     shared: &'a Fox3oscShared,
@@ -28,8 +29,8 @@ impl Fox3oscAudioProcessor<'_> {
     fn process_cc_event(&mut self, midi_event: [u8; 3]) {
         let cc_nr = midi_event[1];
         match cc_nr {
-            MIDI_CC_ALL_SOUNDS_OFF => self.keys.for_each(|key, _| key.end()),
-            MIDI_CC_ALL_NOTES_OFF => self.keys.for_each(|key, _| key.release()),
+            MIDI_CC_ALL_SOUNDS_OFF => self.keys.for_each(Key::end),
+            MIDI_CC_ALL_NOTES_OFF => self.keys.for_each(Key::release),
             _ => {}
         }
     }
@@ -83,6 +84,9 @@ impl<'a> PluginAudioProcessor<'a, Fox3oscShared, Fox3oscMainThread<'a>>
             shared,
             rng: SmallRng::seed_from_u64(0xB00B5),
             keys: Keys::new(sample_rate),
+            note_data: std::array::from_fn(move |note| {
+                NoteData::new(sample_rate, (note as f32) - 24.0)
+            }),
         })
     }
 
@@ -119,7 +123,7 @@ impl<'a> PluginAudioProcessor<'a, Fox3oscShared, Fox3oscMainThread<'a>>
             let pitch = self.shared.get_pitch()?;
 
             output[batch.sample_bounds()].fill(0.0);
-            self.keys.for_each(|key, note_data| {
+            self.keys.for_each(|key| {
                 status = ProcessStatus::Continue;
                 key.process(
                     &mut output[batch.sample_bounds()],
@@ -127,7 +131,7 @@ impl<'a> PluginAudioProcessor<'a, Fox3oscShared, Fox3oscMainThread<'a>>
                     *levels,
                     &mut self.rng,
                     &oscs,
-                    note_data,
+                    &self.note_data,
                 );
             });
         }
@@ -136,7 +140,7 @@ impl<'a> PluginAudioProcessor<'a, Fox3oscShared, Fox3oscMainThread<'a>>
     }
 
     fn reset(&mut self) {
-        self.keys.for_each(|key, _| key.end());
+        self.keys.for_each(Key::end);
     }
 }
 

@@ -5,7 +5,7 @@ use clack_plugin::plugin::PluginError;
 use rand::{Rng, rngs::SmallRng};
 
 use crate::{
-    consts::{KEYS_NR, NOTES_NR, OSC_MOD, OSC_NR, PHASE_DRY, PHASE_NR},
+    consts::{KEYS_NR, OSC_MOD, OSC_NR, PHASE_DRY, PHASE_NR},
     math,
     shared::{Envelope, Fox3oscShared, Modulation, Waveform},
 };
@@ -530,7 +530,6 @@ impl NoteData {
 pub struct Keys {
     alive_keys: ArrayVec<usize, KEYS_NR>,
     keys: [Key; KEYS_NR],
-    note_data: [NoteData; NOTES_NR],
 }
 
 impl Keys {
@@ -538,9 +537,6 @@ impl Keys {
         Self {
             alive_keys: ArrayVec::new(),
             keys: std::array::from_fn(move |note| Key::new(sample_rate, note)),
-            note_data: std::array::from_fn(move |note| {
-                NoteData::new(sample_rate, (note as f32) - 24.0)
-            }),
         }
     }
 
@@ -570,14 +566,14 @@ impl Keys {
 
     pub fn for_each<F>(&mut self, mut f: F)
     where
-        F: FnMut(&mut Key, &[NoteData]),
+        F: FnMut(&mut Key),
     {
         let mut i = 0;
         while i < self.alive_keys.len() {
             let key = &mut self.keys[self.alive_keys[i]];
 
             if key.is_on() {
-                f(key, &self.note_data);
+                f(key);
                 i += 1;
             } else {
                 key.end();
