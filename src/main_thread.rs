@@ -184,11 +184,11 @@ fn get_info_modulation(param_index: u32, info: &mut ParamInfoWriter) {
     }
 }
 
-fn get_info_pitch(param_index: u32, info: &mut ParamInfoWriter) {
+fn get_info_pitch(param_index: u32, info: &mut ParamInfoWriter, pitch_amount: f64) {
     if let Some((name, default)) = match param_index {
-        PARAMETER_PITCH_1 => Some(("Osc 1 Pitch", 24usize)),
-        PARAMETER_PITCH_2 => Some(("Osc 2 Pitch", 24usize)),
-        PARAMETER_PITCH_3 => Some(("Osc 3 Pitch", 24usize)),
+        PARAMETER_PITCH_1 => Some(("Osc 1 Pitch", pitch_amount)),
+        PARAMETER_PITCH_2 => Some(("Osc 2 Pitch", pitch_amount)),
+        PARAMETER_PITCH_3 => Some(("Osc 3 Pitch", pitch_amount)),
         _ => None,
     } {
         info.set(&ParamInfo {
@@ -198,8 +198,8 @@ fn get_info_pitch(param_index: u32, info: &mut ParamInfoWriter) {
             name: name.as_bytes(),
             module: b"",
             min_value: 0.0,
-            max_value: 48.0,
-            default_value: default as f64,
+            max_value: pitch_amount * 2.0,
+            default_value: default,
         });
     }
 }
@@ -216,7 +216,7 @@ impl PluginMainThreadParams for Fox3oscMainThread<'_> {
         self::get_info_levels(param_index, info);
         self::get_info_hq(param_index, info);
         self::get_info_modulation(param_index, info);
-        self::get_info_pitch(param_index, info);
+        self::get_info_pitch(param_index, info, self.shared.pitch_amount);
     }
 
     fn get_value(&mut self, param_id: ClapId) -> Option<f64> {
@@ -275,9 +275,14 @@ impl PluginMainThreadParams for Fox3oscMainThread<'_> {
             PARAMETER_PITCH_1..=PARAMETER_PITCH_3 => {
                 write!(
                     writer,
-                    "{}{} semitones",
-                    if value >= 24.0 { "+" } else { "" },
-                    (value.floor() - 24.0) as isize,
+                    "{}{} {}",
+                    if value >= self.shared.pitch_amount {
+                        "+"
+                    } else {
+                        ""
+                    },
+                    (value.floor() - self.shared.pitch_amount) as isize,
+                    self.shared.step_name,
                 )
             }
             _ => Err(std::fmt::Error),
@@ -306,7 +311,9 @@ impl PluginMainThreadParams for Fox3oscMainThread<'_> {
                 input[..suffix_idx].parse().map(|v: f64| v * scale).ok()
             }
             PARAMETER_HQ_1..=PARAMETER_HQ_3 => Some(input.parse::<bool>().ok()? as u8 as f64),
-            PARAMETER_PITCH_1..=PARAMETER_PITCH_3 => Some(input.parse::<f64>().ok()? + 24.0),
+            PARAMETER_PITCH_1..=PARAMETER_PITCH_3 => {
+                Some(input.parse::<f64>().ok()? + self.shared.pitch_amount)
+            }
             _ if input == Waveform::Sine.as_str() => Some(Waveform::Sine.into()),
             _ if input == Waveform::Triangle.as_str() => Some(Waveform::Triangle.into()),
             _ if input == Waveform::Square.as_str() => Some(Waveform::Square.into()),

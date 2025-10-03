@@ -11,6 +11,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Changelog file
 - Parameters to change the pitch of each oscillator (-24 to +24 semitones)
+- [15-TET], [17-TET], [19-TET] [22-TET] [23-TET] and [24-TET] support
+
+[15-TET]: https://en.wikipedia.org/wiki/15_equal_temperament
+[17-TET]: https://en.wikipedia.org/wiki/17_equal_temperament 
+[19-TET]: https://en.wikipedia.org/wiki/19_equal_temperament
+[22-TET]: https://en.wikipedia.org/wiki/22_equal_temperament
+[23-TET]: https://en.wikipedia.org/wiki/23_equal_temperament
+[24-TET]: https://en.wikipedia.org/wiki/Quarter_tone
 
 ## [0.1.0] 2025-09-14
 

@@ -1,5 +1,14 @@
 use clack_extensions::params::ParamInfoFlags;
 
+pub const AUTHOR: &str = const_str::split!(env!("CARGO_PKG_AUTHORS"), ':')[0];
+pub const PLUGIN_COUNT: usize = 1
+    + if cfg!(feature = "15tet") { 1 } else { 0 }
+    + if cfg!(feature = "17tet") { 1 } else { 0 }
+    + if cfg!(feature = "19tet") { 1 } else { 0 }
+    + if cfg!(feature = "22tet") { 1 } else { 0 }
+    + if cfg!(feature = "23tet") { 1 } else { 0 }
+    + if cfg!(feature = "24tet") { 1 } else { 0 };
+
 /// This parameter represents an enumerated value. If you set this flag, then you must set CLAP_PARAM_IS_STEPPED
 /// too. All values from min to max must not have a blank value_to_text().
 ///
@@ -12,8 +21,11 @@ pub const CLAP_PARAM_IS_ENUM: ParamInfoFlags = ParamInfoFlags::from_bits_retain(
 
 /// Number of MIDI notes and max polyphony of fox3osc
 pub const KEYS_NR: usize = 128;
-/// Number of notes taking into account a possible pitch parameter.
-pub const NOTES_NR: usize = 24 + KEYS_NR + 24;
+
+/// Maximum number of notes that can be heard. This is different from how many keys there are. This
+/// value takes into account pitch shift and temperament. The value is taken from the maximum n-TET
+/// scale supported (24-TET) and adding 2 octaves below and above the 128 MIDI keys.
+pub const MAX_NOTES_NR: usize = (24 * 2) * 2 + KEYS_NR;
 
 /// The oscillator that modulates oscillator 1.
 pub const OSC_MOD: usize = 2;

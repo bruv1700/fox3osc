@@ -1,15 +1,19 @@
 set windows-shell := ["powershell.exe", "-NoLogo", "-Command"]
+default_features := "15tet 17tet 19tet 22tet 23tet 24tet"
 
-build $RUSTFLAGS="-Zlocation-detail=none -Zfmt-debug=none": fetch clippy
+build features=default_features $RUSTFLAGS="-Zlocation-detail=none -Zfmt-debug=none": fetch clippy
     cargo +nightly build \
     -Z build-std=std,panic_abort \
     -Z build-std-features="optimize_for_size" \
     -Z build-std-features=panic_immediate_abort \
+    --features "{{features}}" \
     --release
 # --frozen is weird with -Z build-std
 
-build-debug: fetch-debug clippy-debug
-    cargo build --frozen
+build-debug features=default_features: fetch-debug clippy-debug
+    cargo build \
+    --features "{{features}}" \
+    --frozen
 
 fetch:
     rustup component add rust-src --toolchain nightly

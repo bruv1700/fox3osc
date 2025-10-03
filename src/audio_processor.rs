@@ -11,7 +11,8 @@ use rand::{SeedableRng, rngs::SmallRng};
 
 use crate::{
     consts::{
-        KEYS_NR, MIDI_CC, MIDI_CC_ALL_NOTES_OFF, MIDI_CC_ALL_SOUNDS_OFF, MIDI_OFF, MIDI_ON, NOTES_NR, OSC_NR
+        KEYS_NR, MAX_NOTES_NR, MIDI_CC, MIDI_CC_ALL_NOTES_OFF, MIDI_CC_ALL_SOUNDS_OFF, MIDI_OFF,
+        MIDI_ON, OSC_NR,
     },
     key::{Key, Keys, NoteData},
     main_thread::Fox3oscMainThread,
@@ -19,7 +20,7 @@ use crate::{
 };
 
 pub struct Fox3oscAudioProcessor<'a> {
-    note_data: [NoteData; NOTES_NR],
+    note_data: ArrayVec<NoteData, MAX_NOTES_NR>,
     keys: Keys,
     rng: SmallRng,
     shared: &'a Fox3oscShared,
@@ -79,14 +80,19 @@ impl<'a> PluginAudioProcessor<'a, Fox3oscShared, Fox3oscMainThread<'a>>
         audio_config: PluginAudioConfiguration,
     ) -> Result<Self, PluginError> {
         let sample_rate = audio_config.sample_rate as f32;
+        let note_data = ArrayVec::from_iter((0..shared.notes_nr).map(|note| {
+            NoteData::new(
+                sample_rate,
+                (note as f32) - shared.pitch_amount as f32,
+                shared.n_tet,
+            )
+        }));
 
         Ok(Self {
             shared,
+            note_data,
             rng: SmallRng::seed_from_u64(0xB00B5),
             keys: Keys::new(sample_rate),
-            note_data: std::array::from_fn(move |note| {
-                NoteData::new(sample_rate, (note as f32) - 24.0)
-            }),
         })
     }
 

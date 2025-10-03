@@ -515,8 +515,8 @@ pub struct NoteData {
 }
 
 impl NoteData {
-    pub fn new(sample_rate: f32, note: f32) -> Self {
-        let frequency = 2.0f32.powf((note - 69.0) / 12.0) * 440.0;
+    pub fn new(sample_rate: f32, note: f32, n_tet: f32) -> Self {
+        let frequency = 2.0f32.powf((note - 69.0) / n_tet) * 440.0;
         let increment = frequency / sample_rate;
         let transition_size = 2.0 / (sample_rate / frequency);
 

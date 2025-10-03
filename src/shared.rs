@@ -9,8 +9,8 @@ use clack_plugin::{
 };
 
 use crate::consts::{
-    OSC_NR, PARAMETER_ATTACK, PARAMETER_DECAY, PARAMETER_HQ_1, PARAMETER_HQ_2, PARAMETER_HQ_3,
-    PARAMETER_LEVEL_1, PARAMETER_LEVEL_2, PARAMETER_LEVEL_3, PARAMETER_MODULATION,
+    KEYS_NR, OSC_NR, PARAMETER_ATTACK, PARAMETER_DECAY, PARAMETER_HQ_1, PARAMETER_HQ_2,
+    PARAMETER_HQ_3, PARAMETER_LEVEL_1, PARAMETER_LEVEL_2, PARAMETER_LEVEL_3, PARAMETER_MODULATION,
     PARAMETER_PITCH_1, PARAMETER_PITCH_2, PARAMETER_PITCH_3, PARAMETER_RELEASE, PARAMETER_SUSTAIN,
     PARAMETER_WAVEFORM_1, PARAMETER_WAVEFORM_2, PARAMETER_WAVEFORM_3,
 };
@@ -119,6 +119,20 @@ impl From<f64> for Modulation {
 }
 
 pub struct Fox3oscShared {
+    /* --Temperament Data-- */
+    pub n_tet: f32,
+    pub step_name: &'static str,
+    /// The amount of steps which can be shifted per oscillator either up or down. This is 2 octaves.
+    /// 
+    /// It should be noted that the parameters for shifting pitch range from `0..=pitch_amount*2`, 
+    /// so this value in the context of those parameters correspond to a pitch shift of +0 steps on
+    /// an oscillator.
+    pub pitch_amount: f64,
+    /// Number of notes that can be heard taking into account pitch shifting. This value is the pitch
+    /// amount times 2, plus the number of keys.
+    pub notes_nr: usize,
+
+    /* --Parameters-- */
     envelope: RwLock<Envelope>,
     waveform: RwLock<[Waveform; OSC_NR]>,
     levels: RwLock<[f32; OSC_NR]>,
@@ -127,22 +141,32 @@ pub struct Fox3oscShared {
     pitch: RwLock<[f64; OSC_NR]>,
 }
 
-impl Default for Fox3oscShared {
-    fn default() -> Self {
+impl PluginShared<'_> for Fox3oscShared {}
+
+impl Fox3oscShared {
+    pub fn new(n_tet: f32) -> Self {
+        let pitch_amount = (n_tet as f64) * 2.0;
+        let notes_nr = (pitch_amount as usize) * 2 + KEYS_NR;
+        let step_name = match n_tet {
+            12.0 => "semitones",
+            24.0 => "quarter tones",
+            _ => "steps",
+        };
+
         Self {
+            n_tet,
+            pitch_amount,
+            notes_nr,
+            step_name,
             envelope: Default::default(),
             waveform: Default::default(),
             modulation: Default::default(),
             levels: RwLock::new([1.0, 0.0, 0.0]),
             hq: RwLock::new([true; OSC_NR]),
-            pitch: RwLock::new([24.0; OSC_NR]),
+            pitch: RwLock::new([pitch_amount; OSC_NR]),
         }
     }
-}
 
-impl PluginShared<'_> for Fox3oscShared {}
-
-impl Fox3oscShared {
     const PARAMETER_READ_ERR: PluginError =
         PluginError::Message("Failed to acquire parameter read lock");
 
