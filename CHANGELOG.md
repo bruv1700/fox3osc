@@ -10,7 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - Changelog file
-- Parameters to change the pitch of each oscillator (-24 to +24 semitones)
+- Parameters to change the pitch of each oscillator (-2 to +2 octaves)
 - [15-TET], [17-TET], [19-TET] [22-TET] [23-TET] and [24-TET] support
 
 [15-TET]: https://en.wikipedia.org/wiki/15_equal_temperament

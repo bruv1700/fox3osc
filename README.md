@@ -13,6 +13,7 @@ Lightweight CLAP subtractive synthesizer with 3 oscillators and phase modulation
 - Use oscillator 3 as a modulator for oscillator 1. There are 2 modulation types:
   - *Phase*: Phase modulation (aka FM)
   - *Evil*: Weird f-ed up phase modulation. Modulating signal's phase does not increment each sample and is constant to the sample increment amount. ADSR and velocity filters are also applied to the modulating signal, so mess around with the ADSR. Intended for experimental sound design.
+- Parameters to change the pitch of each oscillator (-2 to +2 octaves)
 - [15-TET], [17-TET], [19-TET] [22-TET] [23-TET] and [24-TET] support.
 
 [15-TET]: https://en.wikipedia.org/wiki/15_equal_temperament
