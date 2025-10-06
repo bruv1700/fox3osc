@@ -106,54 +106,59 @@ impl Entry for Fox3oscEntry {
     }
 }
 
-static PLUGIN_DESCRIPTORS: [Fox3oscDescriptor; PLUGIN_COUNT] = [
-    fox3osc_descriptor!("fox3osc"),
-    #[cfg(feature = "15tet")]
-    fox3osc_descriptor!("fox3osc (15-tet)"),
-    #[cfg(feature = "17tet")]
-    fox3osc_descriptor!("fox3osc (17-tet)"),
-    #[cfg(feature = "19tet")]
-    fox3osc_descriptor!("fox3osc (19-tet)"),
-    #[cfg(feature = "22tet")]
-    fox3osc_descriptor!("fox3osc (22-tet)"),
-    #[cfg(feature = "23tet")]
-    fox3osc_descriptor!("fox3osc (23-tet)"),
-    #[cfg(feature = "24tet")]
-    fox3osc_descriptor!("fox3osc (24-tet)"),
-];
-
-static PLUGIN_TEMPERAMENTS: [f32; PLUGIN_COUNT] = [
-    12.0,
-    #[cfg(feature = "15tet")]
-    15.0,
-    #[cfg(feature = "17tet")]
-    17.0,
-    #[cfg(feature = "19tet")]
-    19.0,
-    #[cfg(feature = "22tet")]
-    22.0,
-    #[cfg(feature = "23tet")]
-    23.0,
-    #[cfg(feature = "24tet")]
-    24.0,
-];
-
 struct Fox3oscFactory {
-    plugin_descriptors: [PluginDescriptor; PLUGIN_COUNT],
+    plugin_descriptors: [(PluginDescriptor, f32); PLUGIN_COUNT],
 }
 
 impl Fox3oscFactory {
     pub fn new() -> Self {
         use clack_plugin::plugin::features::*;
 
+        static PLUGIN_DESCRIPTORS: [Fox3oscDescriptor; PLUGIN_COUNT] = [
+            fox3osc_descriptor!("fox3osc"),
+            #[cfg(feature = "15tet")]
+            fox3osc_descriptor!("fox3osc (15-tet)"),
+            #[cfg(feature = "17tet")]
+            fox3osc_descriptor!("fox3osc (17-tet)"),
+            #[cfg(feature = "19tet")]
+            fox3osc_descriptor!("fox3osc (19-tet)"),
+            #[cfg(feature = "22tet")]
+            fox3osc_descriptor!("fox3osc (22-tet)"),
+            #[cfg(feature = "23tet")]
+            fox3osc_descriptor!("fox3osc (23-tet)"),
+            #[cfg(feature = "24tet")]
+            fox3osc_descriptor!("fox3osc (24-tet)"),
+        ];
+
+        const PLUGIN_N_TETS: [f32; PLUGIN_COUNT] = [
+            12.0,
+            #[cfg(feature = "15tet")]
+            15.0,
+            #[cfg(feature = "17tet")]
+            17.0,
+            #[cfg(feature = "19tet")]
+            19.0,
+            #[cfg(feature = "22tet")]
+            22.0,
+            #[cfg(feature = "23tet")]
+            23.0,
+            #[cfg(feature = "24tet")]
+            24.0,
+        ];
+
         let plugin_descriptors = std::array::from_fn(|i| {
             let descriptor = &PLUGIN_DESCRIPTORS[i];
-            PluginDescriptor::new(descriptor.id(), descriptor.name())
-                .with_vendor(descriptor.author())
-                .with_version(descriptor.version())
-                .with_description(descriptor.description())
-                .with_url(descriptor.url())
-                .with_features([INSTRUMENT, SYNTHESIZER, MONO])
+            let n_tet = PLUGIN_N_TETS[i];
+
+            (
+                PluginDescriptor::new(descriptor.id(), descriptor.name())
+                    .with_vendor(descriptor.author())
+                    .with_version(descriptor.version())
+                    .with_description(descriptor.description())
+                    .with_url(descriptor.url())
+                    .with_features([INSTRUMENT, SYNTHESIZER, MONO]),
+                n_tet,
+            )
         });
 
         Self { plugin_descriptors }
@@ -166,7 +171,9 @@ impl PluginFactory for Fox3oscFactory {
     }
 
     fn plugin_descriptor(&self, index: u32) -> Option<&PluginDescriptor> {
-        self.plugin_descriptors.get(index as usize)
+        self.plugin_descriptors
+            .get(index as usize)
+            .map(|(descriptor, _)| descriptor)
     }
 
     fn create_plugin<'a>(
@@ -176,13 +183,12 @@ impl PluginFactory for Fox3oscFactory {
     ) -> Option<PluginInstance<'a>> {
         self.plugin_descriptors
             .iter()
-            .zip(PLUGIN_TEMPERAMENTS)
             .find_map(|(plugin_descriptor, plugin_temperament)| {
                 if plugin_id == plugin_descriptor.id() {
                     let instance = PluginInstance::new::<Fox3osc>(
                         host_info,
                         plugin_descriptor,
-                        move |_host| Ok(Fox3oscShared::new(plugin_temperament)),
+                        move |_host| Ok(Fox3oscShared::new(*plugin_temperament)),
                         |_host, shared| Ok(Fox3oscMainThread::new(shared)),
                     );
 
