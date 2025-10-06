@@ -171,7 +171,7 @@ impl Fox3oscShared {
         PluginError::Message("Failed to acquire parameter read lock");
 
     const PARAMETER_WRITE_ERR: PluginError =
-        PluginError::Message("Failed to acquire parameter read lock");
+        PluginError::Message("Failed to acquire parameter write lock");
 
     /// Process a potential parameter event. Returns `false` if event is not a parameter event, otherwise
     /// `true`. Returns `Err` if it fails to aquire a parameter write lock.
