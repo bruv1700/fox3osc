@@ -106,8 +106,13 @@ impl Entry for Fox3oscEntry {
     }
 }
 
+struct Fox3oscPlugin {
+    pub descriptor: PluginDescriptor,
+    pub n_tet: f32,
+}
+
 struct Fox3oscFactory {
-    plugin_descriptors: [(PluginDescriptor, f32); PLUGIN_COUNT],
+    plugins: [Fox3oscPlugin; PLUGIN_COUNT],
 }
 
 impl Fox3oscFactory {
@@ -150,18 +155,18 @@ impl Fox3oscFactory {
             let descriptor = &PLUGIN_DESCRIPTORS[i];
             let n_tet = PLUGIN_N_TETS[i];
 
-            (
-                PluginDescriptor::new(descriptor.id(), descriptor.name())
+            Fox3oscPlugin {
+                n_tet,
+                descriptor: PluginDescriptor::new(descriptor.id(), descriptor.name())
                     .with_vendor(descriptor.author())
                     .with_version(descriptor.version())
                     .with_description(descriptor.description())
                     .with_url(descriptor.url())
                     .with_features([INSTRUMENT, SYNTHESIZER, MONO]),
-                n_tet,
-            )
+            }
         });
 
-        Self { plugin_descriptors }
+        Self { plugins: plugin_descriptors }
     }
 }
 
@@ -171,9 +176,9 @@ impl PluginFactory for Fox3oscFactory {
     }
 
     fn plugin_descriptor(&self, index: u32) -> Option<&PluginDescriptor> {
-        self.plugin_descriptors
+        self.plugins
             .get(index as usize)
-            .map(|(descriptor, _)| descriptor)
+            .map(|plugin| &plugin.descriptor)
     }
 
     fn create_plugin<'a>(
@@ -181,22 +186,20 @@ impl PluginFactory for Fox3oscFactory {
         host_info: HostInfo<'a>,
         plugin_id: &CStr,
     ) -> Option<PluginInstance<'a>> {
-        self.plugin_descriptors
-            .iter()
-            .find_map(|(plugin_descriptor, plugin_temperament)| {
-                if plugin_id == plugin_descriptor.id() {
-                    let instance = PluginInstance::new::<Fox3osc>(
-                        host_info,
-                        plugin_descriptor,
-                        move |_host| Ok(Fox3oscShared::new(*plugin_temperament)),
-                        |_host, shared| Ok(Fox3oscMainThread::new(shared)),
-                    );
+        self.plugins.iter().find_map(|plugin| {
+            if plugin_id == plugin.descriptor.id() {
+                let instance = PluginInstance::new::<Fox3osc>(
+                    host_info,
+                    &plugin.descriptor,
+                    move |_host| Ok(Fox3oscShared::new(plugin.n_tet)),
+                    |_host, shared| Ok(Fox3oscMainThread::new(shared)),
+                );
 
-                    Some(instance)
-                } else {
-                    None
-                }
-            })
+                Some(instance)
+            } else {
+                None
+            }
+        })
     }
 }
 
