@@ -129,9 +129,46 @@ impl DCBlocker {
     }
 }
 
+#[derive(Clone, Copy)]
+struct LinearFaderF32 {
+    destination: f32,
+    distance: f32,
+    value: f32,
+}
+
+impl LinearFaderF32 {
+    pub fn new(value: f32) -> Self {
+        Self {
+            value,
+            destination: value,
+            distance: 0.0,
+        }
+    }
+
+    pub fn set(&mut self, destination: f32, distance: f32) {
+        self.destination = destination;
+        self.distance = distance;
+        if distance == 0.0 {
+            self.value = destination;
+        }
+    }
+
+    pub fn process(&mut self) -> f32 {
+        if self.distance == 0.0 {
+            self.value = self.destination;
+        } else {
+            self.value += (self.destination - self.value) * (1.0 / self.distance);
+            self.distance -= 1.0;
+        }
+
+        self.value
+    }
+}
+
 pub struct Key {
     /* --Per oscillator data-- */
     adsr: [ADSR; OSC_NR],
+    levels: [LinearFaderF32; OSC_NR],
     /// Amplitude of currently proccessed sample
     phase: [f32; PHASE_NR],
     /// Used when processing sploinky and skloinky waveforms, and when doing phase and evil modulation.
@@ -145,6 +182,7 @@ pub struct Key {
     modulation: Modulation,
     sample_rate: f32,
     note: usize,
+    fader_time: f32,
     /// MIDI note velocity in amplitude (0.0..=1.0)
     velocity: f32,
 }
@@ -154,9 +192,13 @@ impl Key {
     /// to a MIDI note. The sample increment and wave transition size is pre-calculated here. The ADSR
     /// is also set to an uninitialized state.
     fn new(sample_rate: f32, note: usize) -> Self {
+        let fader_time = sample_rate * 0.01;
+
         Self {
             sample_rate,
             note,
+            fader_time,
+            levels: std::array::from_fn(|_| LinearFaderF32::new(0.0)),
             adsr: std::array::from_fn(|_| ADSR::reset()),
             dc_blocker: std::array::from_fn(|_| DCBlocker::reset()),
             phase: [0.0; PHASE_NR],
@@ -181,12 +223,14 @@ impl Key {
         let mut waveforms = *shared.get_waveforms()?;
         let envelope = *shared.get_envelope()?;
         let hq = *shared.get_hq()?;
+        let levels = *shared.get_levels()?;
 
         self.modulation = *shared.get_modulation()?;
         self.velocity = velocity as f32 / 127.0;
 
         for osc in 0..OSC_NR {
             self.adsr[osc].on(envelope, self.sample_rate);
+            self.levels[osc] = LinearFaderF32::new(levels[osc]);
             self.process_waveform[osc] = loop {
                 match waveforms[osc] {
                     Waveform::Sine => break Self::process_sine,
@@ -234,7 +278,6 @@ impl Key {
         &mut self,
         output: &mut [f32],
         pitch: [usize; OSC_NR],
-        levels: [f32; OSC_NR],
         rng: &mut SmallRng,
         oscs: &[usize],
         note_data: &[NoteData],
@@ -243,12 +286,14 @@ impl Key {
         debug_assert!(self.is_on());
 
         match self.modulation {
-            Modulation::None => self.process_3sub(output, pitch, levels, rng, oscs, note_data),
-            Modulation::Phase => self.process_1pm_1sub(output, pitch, levels, rng, oscs, note_data),
-            Modulation::Evil => {
-                self.process_1evil_1sub(output, pitch, levels, rng, oscs, note_data)
-            }
+            Modulation::None => self.process_3sub(output, pitch, rng, oscs, note_data),
+            Modulation::Phase => self.process_1pm_1sub(output, pitch, rng, oscs, note_data),
+            Modulation::Evil => self.process_1evil_1sub(output, pitch, rng, oscs, note_data),
         }
+    }
+
+    pub fn set_level(&mut self, level: f32, osc: usize) {
+        self.levels[osc].set(level, self.fader_time);
     }
 
     /// Regular subtractive synthesis.
@@ -256,7 +301,6 @@ impl Key {
         &mut self,
         output: &mut [f32],
         pitch: [usize; OSC_NR],
-        levels: [f32; OSC_NR],
         rng: &mut SmallRng,
         oscs: &[usize],
         note_data: &[NoteData],
@@ -267,7 +311,7 @@ impl Key {
             for sample in output.iter_mut() {
                 *sample += (self.process_waveform[osc])(self, rng, osc, note_data.transition_size)
                     * self.velocity
-                    * levels[osc]
+                    * self.levels[osc].process()
                     * self.adsr[osc].process();
 
                 self.phase[osc] = (self.phase[osc] + note_data.increment) % 1.0;
@@ -281,7 +325,6 @@ impl Key {
         &mut self,
         output: &mut [f32],
         pitch: [usize; OSC_NR],
-        levels: [f32; OSC_NR],
         rng: &mut SmallRng,
         oscs: &[usize],
         note_data: &[NoteData],
@@ -302,13 +345,15 @@ impl Key {
                     // We are using the ADSR signal in multiple points here so we're processing it
                     // only once here and reusing it where needed.
                     let osc1_adsr = self.adsr[osc].process();
+                    let osc1_level = self.levels[osc].process();
+                    let let_osc_mod = self.levels[OSC_MOD].process();
                     let sample_dc = (self.process_waveform[osc])(
                         self,
                         rng,
                         osc,
                         osc1_note_data.transition_size,
                     ) * self.velocity
-                        * levels[osc]
+                        * osc1_level
                         * osc1_adsr;
 
                     *sample += self.dc_blocker[osc].process(sample_dc);
@@ -319,7 +364,7 @@ impl Key {
                             OSC_MOD,
                             mod_osc_note_data.transition_size,
                         ))
-                        * (levels[OSC_MOD] / OSC_MOD_LEVEL_MODIFIER))
+                        * (let_osc_mod / OSC_MOD_LEVEL_MODIFIER))
                         % 1.0;
 
                     self.phase[OSC_MOD] = (self.phase[OSC_MOD] + mod_osc_note_data.increment) % 1.0;
@@ -333,7 +378,7 @@ impl Key {
                         osc,
                         osc1_note_data.transition_size,
                     ) * self.velocity
-                        * (levels[osc] - (levels[osc] * levels[OSC_MOD]) / OSC_MOD_LEVEL_MODIFIER)
+                        * (osc1_level - (osc1_level * let_osc_mod) / OSC_MOD_LEVEL_MODIFIER)
                         * osc1_adsr;
 
                     self.phase.swap(0, PHASE_DRY);
@@ -345,7 +390,7 @@ impl Key {
                     *sample +=
                         (self.process_waveform[osc])(self, rng, osc, note_data.transition_size)
                             * self.velocity
-                            * levels[osc]
+                            * self.levels[osc].process()
                             * self.adsr[osc].process();
                     self.phase[osc] = (self.phase[osc] + note_data.increment) % 1.0;
                 }
@@ -367,7 +412,6 @@ impl Key {
         &mut self,
         output: &mut [f32],
         pitch: [usize; OSC_NR],
-        levels: [f32; OSC_NR],
         rng: &mut SmallRng,
         oscs: &[usize],
         note_data: &[NoteData],
@@ -384,7 +428,7 @@ impl Key {
                         osc,
                         osc1_note_data.transition_size,
                     ) * self.velocity
-                        * levels[osc]
+                        * self.levels[osc].process()
                         * self.adsr[osc].process();
 
                     *sample += self.dc_blocker[osc].process(sample_dc);
@@ -397,7 +441,7 @@ impl Key {
                             OSC_MOD,
                             mod_note_data.transition_size,
                         )) * self.velocity
-                            * levels[OSC_MOD]
+                            * self.levels[OSC_MOD].process()
                             * self.adsr[OSC_MOD].process())
                         % 1.0;
                 }
@@ -408,7 +452,7 @@ impl Key {
                     *sample +=
                         (self.process_waveform[osc])(self, rng, osc, note_data.transition_size)
                             * self.velocity
-                            * levels[osc]
+                            * self.levels[osc].process()
                             * self.adsr[osc].process();
                     self.phase[osc] = (self.phase[osc] + note_data.increment) % 1.0;
                 }

@@ -20,6 +20,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 [23-TET]: https://en.wikipedia.org/wiki/23_equal_temperament
 [24-TET]: https://en.wikipedia.org/wiki/Quarter_tone
 
+### Fixed
+
+- Clicking when adjusting the level of an oscillator
+
 ## [0.1.0] 2025-09-14
 
 ### Added

@@ -12,7 +12,7 @@ use rand::{SeedableRng, rngs::SmallRng};
 use crate::{
     consts::{
         KEYS_NR, MAX_NOTES_NR, MIDI_CC, MIDI_CC_ALL_NOTES_OFF, MIDI_CC_ALL_SOUNDS_OFF, MIDI_OFF,
-        MIDI_ON, OSC_NR,
+        MIDI_ON, OSC_NR, PARAMETER_LEVEL_1, PARAMETER_LEVEL_3,
     },
     key::{Key, Keys, NoteData},
     main_thread::Fox3oscMainThread,
@@ -39,7 +39,16 @@ impl Fox3oscAudioProcessor<'_> {
     fn process_events(&mut self, events: InputEventsIter) -> Result<(), PluginError> {
         for event in events {
             // Handle a parameter event
-            if self.shared.process_param_event(event)? {
+            if let Some(param_id) = self.shared.process_param_event(event)? {
+                if matches!(param_id, PARAMETER_LEVEL_1..=PARAMETER_LEVEL_3) {
+                    let osc = (param_id - PARAMETER_LEVEL_1) as usize;
+                    let level = self.shared.get_levels()?[osc];
+
+                    self.keys.for_each(move |key| {
+                        key.set_level(level, osc);
+                    });
+                }
+
                 continue;
             }
 
@@ -134,7 +143,6 @@ impl<'a> PluginAudioProcessor<'a, Fox3oscShared, Fox3oscMainThread<'a>>
                 key.process(
                     &mut output[batch.sample_bounds()],
                     pitch.map(|pitch| pitch as usize),
-                    *levels,
                     &mut self.rng,
                     &oscs,
                     &self.note_data,

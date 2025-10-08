@@ -173,9 +173,9 @@ impl Fox3oscShared {
     const PARAMETER_WRITE_ERR: PluginError =
         PluginError::Message("Failed to acquire parameter write lock");
 
-    /// Process a potential parameter event. Returns `false` if event is not a parameter event, otherwise
-    /// `true`. Returns `Err` if it fails to aquire a parameter write lock.
-    pub fn process_param_event(&self, event: &UnknownEvent) -> Result<bool, PluginError> {
+    /// Process a potential parameter event. Returns the id of the parameter if it is one. Otherwise
+    /// returns `None`. Returns an error on failure to aquire the parameter read lock.
+    pub fn process_param_event(&self, event: &UnknownEvent) -> Result<Option<u32>, PluginError> {
         if let Some(CoreEventSpace::ParamValue(event)) = event.as_core_event() {
             let mut envelope = self.get_envelope_mut()?;
             let mut waveforms = self.get_waveforms_mut()?;
@@ -183,8 +183,9 @@ impl Fox3oscShared {
             let mut hq = self.get_hq_mut()?;
             let mut modulation = self.get_modulation_mut()?;
             let mut pitch = self.get_pitch_mut()?;
+            let param_id: Option<u32> = event.param_id().map(|x| x.into());
 
-            match event.param_id().map(|x| x.into()) {
+            match param_id {
                 Some(PARAMETER_ATTACK) => envelope.attack = event.value() as f32,
                 Some(PARAMETER_DECAY) => envelope.decay = event.value() as f32,
                 Some(PARAMETER_SUSTAIN) => envelope.sustain = event.value() as f32,
@@ -205,9 +206,9 @@ impl Fox3oscShared {
                 _ => {}
             }
 
-            Ok(true)
+            Ok(param_id)
         } else {
-            Ok(false)
+            Ok(None)
         }
     }
 
