@@ -189,8 +189,7 @@ pub struct Key {
 
 impl Key {
     /// Creates a key in an uninitialized state. The frequency is calculated from `note`, which corresponds
-    /// to a MIDI note. The sample increment and wave transition size is pre-calculated here. The ADSR
-    /// is also set to an uninitialized state.
+    /// to a MIDI note. The ADSR is also set to an uninitialized state.
     fn new(sample_rate: f32, note: usize) -> Self {
         let fader_time = sample_rate * 0.01;
 
