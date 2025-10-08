@@ -5,7 +5,7 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.2.0] 2025-10-08
 
 ### Added
 
@@ -39,5 +39,5 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - *Phase*: Phase modulation (aka FM)
   - *Evil*: Weird f-ed up phase modulation. Modulating signal's phase does not increment each sample and is constant to the sample increment amount. ADSR and velocity filters are also applied to the modulating signal, so mess around with the ADSR. Intended for experimental sound design.
 
-[Unreleased]: https://github.com/bruv1700/fox3osc/compare/v0.1.0...HEAD
+[0.2.0]: https://github.com/bruv1700/fox3osc/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/bruv1700/fox3osc/releases/tag/v0.1.0
