@@ -2,7 +2,7 @@
 name = "fox3osc"
 authors = ["bruvy"]
 description = "Lightweight CLAP subtractive synthesizer with 3 oscillators and phase modulation"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2024"
 homepage = "https://github.com/bruv1700/fox3osc"
 
